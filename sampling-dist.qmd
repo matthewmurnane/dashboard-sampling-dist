@@ -12,20 +12,27 @@ library(dplyr)
 library(ggplot2)
 ```
 
-## The Triptych
+# The Triptych
+
+##
 
 ```{r}
 #| content: card-toolbar
 
 numericInput(inputId = "N",
-             label = "total pop",
+             label = "pop size (N)",
              min = 1,
              value = 10000)
-sliderInput(inputId = "normalize",
-            label = "Symmetric vs Skewed",
-            min = 0,
-            value =1,
-            max = 1)
+# sliderInput(inputId = "normalize",
+#             label = "Symmetric vs Skewed",
+#             min = 0,
+#             value =1,
+#             max = 1)
+radioButtons(inputId = "shape",
+             label = "Shape",
+             choices = c("symmetric",
+                         "slight skew",
+                         "heavy skew"))
 radioButtons(inputId = "skew",
              label = "Skew Direction",
              choices = c("right-skew",
@@ -33,106 +40,261 @@ radioButtons(inputId = "skew",
 ```
 
 ```{r}
-#| title: Population Distribution
-plotOutput('pop_plot')
+plotOutput('pop_dist')
 ```
 
 ```{r}
 #| content: card-toolbar
 numericInput(inputId = "n",
-                          label = "sample size",
-                          min = 30,
-                          value = 100)
-             actionButton(inputId = "make_sample",
-                          label = "see a sample")
+             label = "sample size (n)",
+             min = 30,
+             value = 100)
+actionButton(inputId = "make_sample",
+             label = "Draw a sample")
 ```
 
 ```{r}
-#| title: Empirical Distribution
-plotOutput(outputId = "empir_data")
+plotOutput(outputId = "emp_dist")
 ```
 
 
 ```{r}
 #| content: card-toolbar
-actionButton(inputId = "god",
-             label = "Simulate ideal expirement")
+radioButtons(inputId = "stat",
+             label = "Statistic",
+             choices = c("mean",
+                         "median",
+                         "sd",
+                         "IQR",
+                         "max",
+                         "min"))
+actionButton(inputId = "make_sampling",
+             label = "Simulate Sampling Distribution")
 ```
 
 ```{r}
-#| title: Sampling Distribution
-plotOutput(outputId = "godmode")
+plotOutput(outputId = "samp_dist")
 ```
+
 
 ```{r}
 #| context: server
 
+# ----------------------- #
+# Population Distribution #
+# ----------------------- #
+
 pop <- reactive({
-  a <- rgamma(input$N, shape = log(input$normalize * 5000), rate = 1)
+  shape_param <- 100
+  if(input$shape == "symmetric") {
+    shape_param <- 100
+  }
+  if (input$shape == "slight skew") {
+    shape_param <- 8
+  }
+  
+  if (input$shape == "heavy skew") {
+    shape_param <- .5
+  }
+  a <- rgamma(input$N, shape = shape_param, rate = 1)
   df <- data.frame(right = a,
                    left = -a)
   df
 })
 
-output$pop_plot <- renderPlot({
+output$pop_dist <- renderPlot({
   if(input$skew == "left-skew"){
     pop() %>% 
       ggplot(aes(x = left))+
       geom_histogram(color = "white",
                      fill = "goldenrod")+
       theme_classic()+
-      xlab("")+
-      ggtitle("Distribution of the Poputlation")
+      xlab("x")+
+      ggtitle("Population Distribution")
   } else {
     pop() %>% 
       ggplot(aes(x = right))+
       geom_histogram(color = "white",
                      fill = "goldenrod")+
       theme_classic()+
-      xlab("")+
-      ggtitle("Distribution of the Poputlation")
+      xlab("x")+
+      ggtitle("Population Distribution")
   }
 })
 
+
+# ---------------------- #
+# Empirical Distribution #
+# ---------------------- #
+
 samp <- reactive({
   if(input$skew == "left-skew"){
-    samp <- sample(pop()$left, input$n, replace = TRUE)
+    samp <- sample(pop()$left, input$n, replace = FALSE)
   } else if(input$skew == "right-skew") {
-    samp <- sample(pop()$right, input$n, replace = TRUE)
+    samp <- sample(pop()$right, input$n, replace = FALSE)
   }
   samp_df <- data.frame(samp = samp)
   samp_df
 }) %>% 
   bindEvent(input$make_sample)
 
-output$empir_data <- renderPlot({
+output$emp_dist <- renderPlot({
   samp() %>% 
     ggplot(aes(x = samp))+
     geom_histogram(color = "white",
-                   fill = "green3")+
+                   fill = "blue")+
     theme_classic()+
     xlab("x")+
-    ggtitle("A Sample")
+    ggtitle("Empirical Distribution")
 }) %>% 
   bindEvent(input$make_sample)
 
-goddf <- reactive({
+# --------------------- #
+# Sampling Distribution #
+# --------------------- #
+
+samplingdf <- reactive({
   if(input$skew == "right-skew"){
-    s <- replicate(10000, mean(sample(pop()$right, input$n, replace = TRUE)))
+    x <- pop()$right
   } else if(input$skew == "left-skew"){
-    s <- replicate(10000, mean(sample(pop()$left, input$n, replace = TRUE)))
+    x <- pop()$left
   }
+  s <- replicate(10000, get(input$stat)(sample(x, input$n, replace = FALSE)))
   zdf <- data.frame(s = s)
-  zdf}) %>% 
-  bindEvent(input$god)
+  zdf
+  }) %>% 
+  bindEvent(input$make_sampling)
 
-
-output$godmode <- renderPlot(
-  goddf() %>% 
+output$samp_dist <- renderPlot(
+  samplingdf() %>% 
     ggplot(aes(x = s))+
     geom_histogram(color = "white",
                    fill = "purple")+
-    theme_classic()) %>% 
-  bindEvent(input$god)
+    theme_classic() +
+    xlab("statistic") +
+    ggtitle("Sampling Distribution")
+  ) %>% 
+  bindEvent(input$make_sampling)
+```
+
+# Approximations
+
+##
+
+```{r}
+#| content: card-toolbar
+actionButton(inputId = "import",
+             label = "Import Empirical Distribution")
+```
+
+```{r}
+plotOutput(outputId = "boot_pop_dist")
+```
+
+```{r}
+#| content: card-toolbar
+actionButton(inputId = "make_bsample",
+             label = "Draw a bootstrap sample")
+```
+
+```{r}
+plotOutput(outputId = "boot_samp1")
+```
+
+```{r}
+#| content: card-toolbar
+actionButton(inputId = "make_bsampling_dist",
+             label = "Generate bootstrap sampling distribution")
+checkboxInput(inputId = "overlay_truth", 
+              label = "Overlay true sampling distribution",
+              value = FALSE)
+```
+
+```{r}
+plotOutput(outputId = "boot_sampling_dist")
+```
+
+
+
+```{r}
+#| context: server
+
+# -------------------- #
+# Bootstrap Population #
+# -------------------- #
+output$boot_pop_dist <- renderPlot({
+  samp() %>%
+    ggplot(aes(x = samp))+
+    geom_histogram(color = "white",
+                   fill = "goldenrod")+
+    theme_classic()+
+    xlab("x")+
+    ggtitle("Bootstrap Population Distribution")
+}) %>%
+  bindEvent(input$import)
+
+# ---------------- #
+# Bootstrap Sample #
+# ---------------- #
+
+bsamp <- reactive({
+  bsamp <- sample(samp()$samp, input$n, replace = TRUE)
+  bsamp_df <- data.frame(bsamp = bsamp)
+  bsamp_df
+}) %>% 
+  bindEvent(input$make_bsample)
+
+output$boot_samp1 <- renderPlot({
+  bsamp() %>% 
+    ggplot(aes(x = bsamp))+
+    geom_histogram(color = "white",
+                   fill = "blue")+
+    theme_classic()+
+    xlab("x")+
+    ggtitle("Bootstrap Sample")
+}) %>% 
+  bindEvent(input$make_bsample)
+
+# ------------------------------- #
+# Bootstrap Sampling Distribution #
+# ------------------------------- #
+
+bsamps <- reactive({
+  bsamps <- replicate(1000,
+                    get(input$stat)(sample(samp()$samp, input$n, replace = TRUE)))
+  bsamps_df <- data.frame(bsamps = bsamps)
+  bsamps_df
+}) %>% 
+  bindEvent(input$make_bsampling_dist)
+
+output$boot_sampling_dist <- renderPlot({
+  
+  p1 <- ggplot()+
+    geom_histogram(data = bsamps(),
+                   mapping= aes(x = bsamps,
+                                y = ..density..),
+                   color = "white",
+                   fill = "purple")+
+    theme_classic()+
+    xlab("x")+
+    ggtitle("Bootstrap Sampling Distribution")
+  
+  if (input$overlay_truth) {
+    s <- samplingdf()$s - mean(samplingdf()$s) + mean(bsamps()$bsamps)
+    centered_df <- data.frame(s = s)
+    p1 +
+      geom_histogram(data = centered_df,
+                     mapping= aes(x = s,
+                                  y = ..density..),
+                     color = "white",
+                     fill = "plum",
+                     alpha = .5)
+      
+  } else {
+    p1
+  }
+
+}) %>% 
+  bindEvent(input$make_bsampling_dist, input$overlay_truth)
 ```
 
