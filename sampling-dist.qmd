@@ -1,0 +1,138 @@
+---
+title: "Approximating the Sampling Distribution"
+author: "Stat 20"
+format: dashboard
+server: shiny
+---
+
+```{r}
+#| context: setup
+
+library(dplyr)
+library(ggplot2)
+```
+
+## The Triptych
+
+```{r}
+#| content: card-toolbar
+
+numericInput(inputId = "N",
+             label = "total pop",
+             min = 1,
+             value = 10000)
+sliderInput(inputId = "normalize",
+            label = "Symmetric vs Skewed",
+            min = 0,
+            value =1,
+            max = 1)
+radioButtons(inputId = "skew",
+             label = "Skew Direction",
+             choices = c("right-skew",
+                         "left-skew"))
+```
+
+```{r}
+#| title: Population Distribution
+plotOutput('pop_plot')
+```
+
+```{r}
+#| content: card-toolbar
+numericInput(inputId = "n",
+                          label = "sample size",
+                          min = 30,
+                          value = 100)
+             actionButton(inputId = "make_sample",
+                          label = "see a sample")
+```
+
+```{r}
+#| title: Empirical Distribution
+plotOutput(outputId = "empir_data")
+```
+
+
+```{r}
+#| content: card-toolbar
+actionButton(inputId = "god",
+             label = "Simulate ideal expirement")
+```
+
+```{r}
+#| title: Sampling Distribution
+plotOutput(outputId = "godmode")
+```
+
+```{r}
+#| context: server
+
+pop <- reactive({
+  a <- rgamma(input$N, shape = log(input$normalize * 5000), rate = 1)
+  df <- data.frame(right = a,
+                   left = -a)
+  df
+})
+
+output$pop_plot <- renderPlot({
+  if(input$skew == "left-skew"){
+    pop() %>% 
+      ggplot(aes(x = left))+
+      geom_histogram(color = "white",
+                     fill = "goldenrod")+
+      theme_classic()+
+      xlab("")+
+      ggtitle("Distribution of the Poputlation")
+  } else {
+    pop() %>% 
+      ggplot(aes(x = right))+
+      geom_histogram(color = "white",
+                     fill = "goldenrod")+
+      theme_classic()+
+      xlab("")+
+      ggtitle("Distribution of the Poputlation")
+  }
+})
+
+samp <- reactive({
+  if(input$skew == "left-skew"){
+    samp <- sample(pop()$left, input$n, replace = TRUE)
+  } else if(input$skew == "right-skew") {
+    samp <- sample(pop()$right, input$n, replace = TRUE)
+  }
+  samp_df <- data.frame(samp = samp)
+  samp_df
+}) %>% 
+  bindEvent(input$make_sample)
+
+output$empir_data <- renderPlot({
+  samp() %>% 
+    ggplot(aes(x = samp))+
+    geom_histogram(color = "white",
+                   fill = "green3")+
+    theme_classic()+
+    xlab("x")+
+    ggtitle("A Sample")
+}) %>% 
+  bindEvent(input$make_sample)
+
+goddf <- reactive({
+  if(input$skew == "right-skew"){
+    s <- replicate(10000, mean(sample(pop()$right, input$n, replace = TRUE)))
+  } else if(input$skew == "left-skew"){
+    s <- replicate(10000, mean(sample(pop()$left, input$n, replace = TRUE)))
+  }
+  zdf <- data.frame(s = s)
+  zdf}) %>% 
+  bindEvent(input$god)
+
+
+output$godmode <- renderPlot(
+  goddf() %>% 
+    ggplot(aes(x = s))+
+    geom_histogram(color = "white",
+                   fill = "purple")+
+    theme_classic()) %>% 
+  bindEvent(input$god)
+```
+
